@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { saveRoomFinderCache, loadRoomFinderCache } from './room-finder-cache.js';
 
 /* ───── Types matching Java DTOs ───── */
 
@@ -82,8 +83,10 @@ async function javaFetch<T>(path: string, init?: RequestInit): Promise<T> {
       signal: AbortSignal.timeout(8_000)
     });
   } catch (err: any) {
-    console.error(`[room-finder] Network error reaching ${url}:`, err.message);
-    throw new Error(`Cannot reach Java server at ${url}: ${err.message}`);
+    const causeCode = err?.cause?.code ? ` (${err.cause.code})` : '';
+    const causeMessage = err?.cause?.message ? `: ${err.cause.message}` : '';
+    console.error(`[room-finder] Network error reaching ${url}:`, err.message, err?.cause ?? '');
+    throw new Error(`Cannot reach Java server at ${url}: ${err.message}${causeCode}${causeMessage}`);
   }
 
   console.log(`[room-finder] ← ${res.status} ${res.statusText}`);
@@ -105,10 +108,33 @@ export async function roomFinderHealth() {
 
 /** POST /api/bridge  — find free rooms via YOLO + schedule */
 export async function findFreeRooms(req: FindRoomRequest): Promise<FindRoomResponse> {
-  return javaFetch<FindRoomResponse>('/api/bridge', {
-    method: 'POST',
-    body: JSON.stringify(req)
-  });
+  try {
+    const res = await javaFetch<FindRoomResponse>('/api/bridge', {
+      method: 'POST',
+      body: JSON.stringify(req)
+    });
+    // persist latest successful response to disk so UI can show cached result when Java is down
+    try {
+      await saveRoomFinderCache(res);
+    } catch (e) {
+      // ignore cache errors
+    }
+    return res;
+  } catch (error) {
+    // If Java is unreachable, try to return last cached response
+    const cache = await loadRoomFinderCache();
+    if (cache && cache.payload && typeof cache.payload === 'object') {
+      const payload = cache.payload as FindRoomResponse;
+      const reason = error instanceof Error ? error.message : String(error);
+      return {
+        free_rooms: payload.free_rooms ?? [],
+        alternatives: payload.alternatives ?? [],
+        reason: `Java unreachable: ${reason} — returning cached result (updatedAt=${cache.updatedAt})`
+      } as FindRoomResponse;
+    }
+
+    throw error;
+  }
 }
 
 /** GET /api/schedule/auditories — list of all rooms */

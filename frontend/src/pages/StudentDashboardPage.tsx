@@ -46,15 +46,6 @@ const StudentDashboardPage = () => {
 
       {subjectsQuery.error ? <Alert type="error" showIcon message="Не удалось загрузить предметы." /> : null}
 
-      {subjectsQuery.data?.stale ? (
-        <Alert
-          type="warning"
-          showIcon
-          message="Показаны кэшированные данные расписания (источник недоступен)."
-          description={subjectsQuery.data.reason ? `Причина: ${subjectsQuery.data.reason}` : undefined}
-        />
-      ) : null}
-
       {!subjectsQuery.data?.stale && subjectsQuery.data?.reason ? (
         <Alert type="info" showIcon message={subjectsQuery.data.reason} />
       ) : null}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import {
   Alert,
   Badge,
@@ -30,7 +30,7 @@ import {
   VideoCameraOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { findFreeRooms, loadAuditories } from '../api/rooms-api';
+import { findFreeRooms } from '../api/rooms-api';
 import type { FindRoomQuery, RoomInfo } from '../types';
 
 /* ── Locations hardcoded (match the Java .env LOCATIONS_LIST) ── */
@@ -40,6 +40,32 @@ const LOCATIONS = [
 ];
 
 const DURATION_OPTIONS = [30, 60, 90, 120];
+const TELEGRAM_BOT_URL = 'https://t.me/AiCam228_bot';
+
+const extractApiErrorMessage = (error: unknown): string => {
+  if (!error || typeof error !== 'object') {
+    return 'Неизвестная ошибка';
+  }
+
+  const err = error as {
+    message?: string;
+    response?: {
+      data?: {
+        details?: string;
+        message?: string;
+        error?: string;
+      };
+    };
+  };
+
+  return (
+    err.response?.data?.details
+    || err.response?.data?.message
+    || err.response?.data?.error
+    || err.message
+    || 'Неизвестная ошибка'
+  );
+};
 
 const cameraStatusTag = (room: RoomInfo) => {
   if (room.camera_status === 'online' && room.camera_free) {
@@ -54,12 +80,6 @@ const cameraStatusTag = (room: RoomInfo) => {
 const RoomsPage = () => {
   const [form] = Form.useForm();
   const [selectedLocation, setSelectedLocation] = useState<string>(LOCATIONS[0].id);
-
-  const auditoriesQuery = useQuery({
-    queryKey: ['auditories'],
-    queryFn: loadAuditories,
-    retry: 1
-  });
 
   const searchMutation = useMutation({
     mutationFn: findFreeRooms
@@ -206,7 +226,18 @@ const RoomsPage = () => {
           type="error"
           showIcon
           message="Ошибка поиска"
-          description={(searchMutation.error as Error).message}
+          description={(
+            <Space direction="vertical" size={4}>
+              <Typography.Text>{extractApiErrorMessage(searchMutation.error)}</Typography.Text>
+              <Typography.Text type="secondary">
+                Если вкладка не работает, вы можете перейти к нашему{' '}
+                <Typography.Link href={TELEGRAM_BOT_URL} target="_blank" rel="noopener noreferrer">
+                  Telegram-боту
+                </Typography.Link>
+                .
+              </Typography.Text>
+            </Space>
+          )}
           action={
             <Button icon={<ReloadOutlined />} onClick={handleSearch}>
               Повторить
@@ -233,7 +264,20 @@ const RoomsPage = () => {
             }
           >
             {result.free_rooms.length === 0 ? (
-              <Empty description="Свободных кабинетов не найдено" />
+              <Empty
+                description={(
+                  <Space direction="vertical" size={4}>
+                    <Typography.Text>Свободных кабинетов не найдено.</Typography.Text>
+                    <Typography.Text type="secondary">
+                      Вы можете перейти к нашему{' '}
+                      <Typography.Link href={TELEGRAM_BOT_URL} target="_blank" rel="noopener noreferrer">
+                        Telegram-боту
+                      </Typography.Link>
+                      .
+                    </Typography.Text>
+                  </Space>
+                )}
+              />
             ) : (
               <List
                 grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 4 }}
@@ -305,45 +349,6 @@ const RoomsPage = () => {
         </>
       )}
 
-      {/* All auditories list */}
-      <Card
-        title="Все аудитории"
-        extra={
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => auditoriesQuery.refetch()}
-            loading={auditoriesQuery.isLoading}
-          >
-            Обновить
-          </Button>
-        }
-      >
-        {auditoriesQuery.isLoading && <Spin />}
-        {auditoriesQuery.error && (
-          <Alert type="warning" showIcon message="Не удалось загрузить список аудиторий (Java сервер недоступен)" />
-        )}
-        {auditoriesQuery.data && auditoriesQuery.data.length > 0 ? (
-          <List
-            size="small"
-            dataSource={auditoriesQuery.data}
-            renderItem={(aud) => (
-              <List.Item>
-                <List.Item.Meta
-                  title={aud.name || aud.number}
-                  description={
-                    <Space>
-                      <Tag>{aud.corpus}</Tag>
-                      <Tag>{aud.category}</Tag>
-                    </Space>
-                  }
-                />
-              </List.Item>
-            )}
-          />
-        ) : (
-          !auditoriesQuery.isLoading && !auditoriesQuery.error && <Empty description="Нет данных" />
-        )}
-      </Card>
     </Space>
   );
 };

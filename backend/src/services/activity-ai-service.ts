@@ -47,10 +47,8 @@ const callGeminiText = async (prompt: string): Promise<string | null> => {
     return null;
   }
 
-  const endpoints = [
-    `https://generativelanguage.googleapis.com/v1/models/${env.GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
-    `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`
-  ];
+  const models = [env.GEMINI_MODEL, 'gemini-2.5-flash-lite']
+    .filter((model, index, array) => model && array.indexOf(model) === index);
 
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -59,25 +57,32 @@ const callGeminiText = async (prompt: string): Promise<string | null> => {
     }
   };
 
-  for (const endpoint of endpoints) {
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
-      if (!res.ok) {
-        continue;
+  for (const model of models) {
+    const endpoints = [
+      `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          continue;
+        }
+        const parsed = (await res.json()) as unknown;
+        const text = extractModelText(parsed);
+        if (text && text.length > 0) {
+          return text;
+        }
+      } catch {
+        // fallback below
       }
-      const parsed = (await res.json()) as unknown;
-      const text = extractModelText(parsed);
-      if (text && text.length > 0) {
-        return text;
-      }
-    } catch {
-      // fallback below
     }
   }
 
